@@ -1,0 +1,232 @@
+# DB MASTER
+- name: Configure DB Master
+  tags:
+    - configure_master
+  hosts: dbMaster
+  become: yes
+  vars:
+    mysql_slaves: "{{ groups['dbSlave'] | map('extract', hostvars, 'private_ip') | list }}"
+  
+  tasks:
+    - name: Update and install MySQL server
+      apt:
+        name: mysql-server
+        update_cache: yes
+        state: present
+
+    - name: Modify MySQL configuration for replication
+      lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      with_items:
+        - { regexp: '^user.*', line: '#user = mysql' }
+        - { regexp: '^# log_bin.*', line: 'log_bin = /var/log/mysql/mysql-bin.log' }
+        - { regexp: '^bind-address.*', line: 'bind-address = 0.0.0.0' }
+        - { regexp: '^# server-id.*', line: 'server-id = 1' }
+
+    - name: Create user 'fattah' with permissions
+      shell: |
+        sudo mysql -e "CREATE USER 'fattah'@'%' IDENTIFIED BY 'password_fattah';"
+        sudo mysql -e "GRANT ALL ON *.* TO 'fattah'@'%';"
+        sudo mysql -e "FLUSH PRIVILEGES;"
+
+
+    - name: Create replication user
+      shell: |
+        sudo mysql -e "CREATE USER 'replica'@'%' IDENTIFIED BY 'password_replica';"
+        sudo mysql -e "GRANT REPLICATION SLAVE ON *.* TO 'replica'@'%';"
+        sudo mysql -e "FLUSH PRIVILEGES;"
+
+    - name: Alter replication user to use mysql_native_password
+      shell: |
+        mysql -e "ALTER USER 'replica'@'%' IDENTIFIED WITH mysql_native_password BY 'password_replica';"
+        mysql -e "FLUSH PRIVILEGES;"
+
+    - name: Restart MySQL service
+      service:
+        name: mysql
+        state: restarted
+
+    - name: Create a dump of all databases
+      args:
+        creates: /tmp/masterdump.sql 
+      register: grep_result
+      shell: |
+        sudo mysqldump -uroot --all-databases --source-data > /tmp/masterdump.sql
+        sudo mv /tmp/masterdump.sql /home/ubuntu/masterdump.sql
+        grep CHANGE /home/ubuntu/masterdump.sql | head -1
+      
+
+    - name: Display the first CHANGE statement
+      debug:
+        msg: "First CHANGE statement: {{ grep_result.stdout }}"
+
+    - name: Check slaves ip
+      debug:
+        msg: "mysql_slaves: {{ mysql_slaves }}"
+
+    - name: Copy dump to dbSlave
+      shell: sudo scp -i /home/ubuntu/Adsiser.pem -o StrictHostKeyChecking=no /home/ubuntu/masterdump.sql ubuntu@{{ item }}:/home/ubuntu/
+      with_items: "{{ mysql_slaves }}"
+  
+
+# DB SLAVE
+- name: Configure DB Slave
+  tags:
+    - configure_slave
+  hosts: dbSlave
+  become: yes
+  vars:
+    mysql_master_ip: "{{ hostvars['dbMaster'].ansible_host  }}"
+  
+  tasks:  
+    - name: Update and install MySQL server
+      apt:
+        name: mysql-server
+        update_cache: yes
+        state: present
+
+    - name: Modify MySQL configuration for replication
+      lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      with_items:
+        - { regexp: '^user.*', line: '#user = mysql' }
+        - { regexp: '^bind-address.*', line: 'bind-address = 0.0.0.0' }
+        - { regexp: '^# server-id.*', line: 'server-id = 2' }
+
+    - name: Restart MySQL service
+      service:
+        name: mysql
+        state: restarted
+
+    - name: Create user 'fattah' with permissions
+      shell: |
+        sudo mysql -e "CREATE USER 'fattah'@'%' IDENTIFIED BY 'password_fattah';"
+        sudo mysql -e "GRANT ALL ON *.* TO 'fattah'@'%';"
+        sudo mysql -e "FLUSH PRIVILEGES;"
+
+    - name: change master
+      shell: |
+        sudo mysql -e 'STOP SLAVE;'
+        sudo mysql -e 'CHANGE MASTER TO MASTER_HOST="{{ mysql_master_ip }}", MASTER_USER="replica", MASTER_PASSWORD="password_replica";'
+        
+    - name: apply masterdump
+      shell: | 
+        sudo mysql -uroot < /home/ubuntu/masterdump.sql
+        sudo mysql -e 'STOP SLAVE;'
+        sudo mysql -e 'START SLAVE;'
+
+# PhpMyAdmin Web Server
+- name: Configure phpMyAdmin and Nginx
+  tags:
+    - configure_web
+  hosts: phpMyAdmin
+  become: yes
+  vars:
+    mysql_master: "{{ hostvars['dbMaster']['private_ip'] }}"
+    mysql_slaves: "{{ groups['dbSlave'] | map('extract', hostvars, 'private_ip') | list }}"
+
+  tasks:
+    - name: debug
+      debug:
+        msg:
+          - "Master IP: {{ mysql_master }}"
+          - "Slave IPs: {{ mysql_slaves }}"
+
+    - name: Update apt packages
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - gpg
+          - gnupg2
+          - software-properties-common
+          - ca-certificates
+          - apt-transport-https
+          - lsb-release
+        state: present
+
+    - name: Add PHP repository
+      apt_repository:
+        repo: ppa:ondrej/php
+        state: present
+        update_cache: yes
+
+    - name: Install PHP 8.3 and extensions
+      apt:
+        name:
+          - php8.3
+          - php8.3-fpm
+          - php8.3-cli
+          - php8.3-pdo
+          - php8.3-mysql
+          - php8.3-zip
+          - php8.3-gd
+          - php8.3-mbstring
+          - php8.3-curl
+          - php8.3-xml
+          - php8.3-bcmath
+          - php8.3-common
+        state: present
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Configure phpMyAdmin directory
+      shell: |
+        cd /var/www/
+        chown -R $USER:$USER /var/www
+        wget https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-english.tar.gz
+        mkdir phpmyadmin
+        tar -xvzf phpMyAdmin-5.2.1-english.tar.gz -C phpmyadmin
+        cd phpmyadmin
+        mv phpMyAdmin-5.2.1-english/* .
+        rm /var/www/phpMyAdmin-5.2.1-english.tar.gz
+
+    - name: Create Nginx configuration for phpMyAdmin
+      template:
+        src: ./templates/server.j2
+        dest: /etc/nginx/sites-available/phpMyAdmin.local
+      tags: phpmyadmin
+
+    - name: Enable phpMyAdmin site
+      file:
+        src: /etc/nginx/sites-available/phpMyAdmin.local
+        dest: /etc/nginx/sites-enabled/phpMyAdmin.local
+        state: link
+
+    - name: Restart Nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+    - name: Generate Blowfish secret
+      shell: |
+        openssl rand -base64 22 | tr -d '\n'
+      register: blowfish_secret
+      tags: phpmyadmin
+
+    - name: Configure phpMyAdmin database connections
+      template:
+        src: ./templates/config.inc.php.j2
+        dest: /var/www/phpmyadmin/config.inc.php
+      tags: phpmyadmin
+
+    - name: Restart Nginx after configuration
+      systemd:
+        name: nginx
+        state: restarted
+      tags: phpmyadmin
+
+
+

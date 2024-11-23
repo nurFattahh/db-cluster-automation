@@ -1,0 +1,30 @@
+<?php
+/* Servers configuration */
+$i=1;
+
+$cfg['blowfish_secret'] = '{{ blowfish_secret.stdout }}';
+
+$cfg['Servers'][$i]['verbose'] = 'Database Server Master';
+$cfg['Servers'][$i]['host'] = '{{ mysql_master }}';
+$cfg['Servers'][$i]['auth_type'] = 'cookie';
+$cfg['Servers'][$i]['user'] = 'fattah';
+$cfg['Servers'][$i]['password'] = 'password_fattah';
+$cfg['Servers'][$i]['compress'] = false;
+$cfg['Servers'][$i]['AllowNoPassword'] = false;
+$i++;
+
+{% for slave in mysql_slaves %}
+$cfg['Servers'][$i]['verbose'] = "Database Server Slave" . ($i - 1);
+$cfg['Servers'][$i]['host'] = '{{ slave }}';
+$cfg['Servers'][$i]['auth_type'] = 'cookie';
+$cfg['Servers'][$i]['user'] = 'fattah';
+$cfg['Servers'][$i]['password'] = 'password_fattah';
+$cfg['Servers'][$i]['compress'] = false;
+$cfg['Servers'][$i]['AllowNoPassword'] = false;
+$i++;
+{% endfor %}
+
+$cfg['DefaultLang'] = 'en';
+$cfg['ServerDefault'] = 1;
+$cfg['UploadDir'] = '';
+$cfg['SaveDir'] = '';
