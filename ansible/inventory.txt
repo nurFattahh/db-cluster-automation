@@ -1,0 +1,7 @@
+[dbSlave]
+dbSlave1 ansible_host=54.161.137.50 ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=172.31.91.152 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+dbSlave2 ansible_host=3.95.178.34 ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=172.31.88.24 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+[phpMyAdmin]
+phpMyAdmin ansible_host=35.172.133.75 ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=172.31.84.10 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+[dbMaster]
+dbMaster ansible_host=44.206.236.216 ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=172.31.87.183 ansible_ssh_common_args='-o StrictHostKeyChecking=no'

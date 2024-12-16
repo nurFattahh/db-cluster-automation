@@ -1,43 +1,10 @@
-#VPC
 provider "aws" {
   region = "us-east-1" 
   
 }
 
-# resource "aws_vpc" "main_vpc" {
-#   cidr_block = "10.0.0.0/16"
-# }
-
-# # Internet Gateway
-# resource "aws_internet_gateway" "igw" {
-#   vpc_id = aws_vpc.main_vpc.id
-# }
-
-# # Subnet
-# resource "aws_subnet" "main_subnet" {
-#   vpc_id     = aws_vpc.main_vpc.id
-#   cidr_block = "10.0.1.0/24"
-# }
-
-# # Route Table
-# resource "aws_route_table" "public_rt" {
-#   vpc_id = aws_vpc.main_vpc.id
-
-#   route {
-#     cidr_block = "0.0.0.0/0"
-#     gateway_id = aws_internet_gateway.igw.id
-#   }
-# }
-
-# # Associate Route Table with Subnet
-# resource "aws_route_table_association" "public_rt_assoc" {
-#   subnet_id      = aws_subnet.main_subnet.id
-#   route_table_id = aws_route_table.public_rt.id
-# }
-
 # Security Group
 resource "aws_security_group" "instance_sg" {
-  # vpc_id = aws_vpc.main_vpc.id
 
   ingress {
     from_port   = 80
@@ -94,7 +61,6 @@ resource "aws_security_group" "instance_sg" {
 resource "aws_instance" "dbMaster" {
   ami           = "ami-04505e74c0741db8d"  # Ubuntu 22.04 AMI for us-east-1
   instance_type = "t2.micro"
-  # subnet_id     = aws_subnet.main_subnet.id
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
   key_name      = "Adsiser"
 
@@ -123,7 +89,7 @@ resource "null_resource" "inventory_dbMaster" {
   provisioner "local-exec" {
     command = <<-EOT
       echo "[dbMaster]" >> ../ansible/inventory.txt
-      echo "dbMaster ansible_host=${aws_instance.dbMaster.public_ip} ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=${aws_instance.dbMaster.private_ip}" >> ../ansible/inventory.txt
+      echo "dbMaster ansible_host=${aws_instance.dbMaster.public_ip} ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=${aws_instance.dbMaster.private_ip} ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ../ansible/inventory.txt
     EOT
   }
 }
@@ -133,7 +99,6 @@ resource "aws_instance" "dbSlave" {
   ami           = "ami-04505e74c0741db8d"  # Ubuntu 22.04 AMI for us-east-1
   instance_type = "t2.micro"
   count         = 2
-  # subnet_id     = aws_subnet.main_subnet.id
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
   key_name      = "Adsiser"
 
@@ -153,7 +118,7 @@ resource "null_resource" "inventory_dbSlave" {
     x=0
     %{ for instance in aws_instance.dbSlave }
     x=$((x + 1))
-    echo "dbSlave$x ansible_host=${instance.public_ip} ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=${instance.private_ip}" >> ../ansible/inventory.txt
+    echo "dbSlave$x ansible_host=${instance.public_ip} ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=${instance.private_ip} ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ../ansible/inventory.txt
     %{ endfor }
     EOT
   }
@@ -164,7 +129,6 @@ resource "null_resource" "inventory_dbSlave" {
 resource "aws_instance" "phpMyAdmin" {
   ami           = "ami-04505e74c0741db8d"  # Ubuntu 22.04 AMI for us-east-1
   instance_type = "t2.micro"
-  # subnet_id     = aws_subnet.main_subnet.id
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
   key_name      = "Adsiser"
 
@@ -182,7 +146,7 @@ resource "null_resource" "inventory_phpMyAdmin" {
   provisioner "local-exec" {
     command = <<EOT
     echo "[phpMyAdmin]" >> ../ansible/inventory.txt
-    echo "phpMyAdmin ansible_host=${aws_instance.phpMyAdmin.public_ip} ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=${aws_instance.phpMyAdmin.private_ip}" >> ../ansible/inventory.txt
+    echo "phpMyAdmin ansible_host=${aws_instance.phpMyAdmin.public_ip} ansible_ssh_user=ubuntu ansible_ssh_private_key_file=/home/ubuntu/Adsiser.pem private_ip=${aws_instance.phpMyAdmin.private_ip} ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ../ansible/inventory.txt
     EOT
   }
 
